@@ -77,11 +77,23 @@ def sync_leads_to_ai(client: Client) -> None:
                 print(f"[OmniDim] Call dispatched: {response}")
 
                 # ── Extract call_request_id from the OmniDim response ─────────
-                # The response may be a dict or an object — handle both.
+                # OmniDimension wraps the real payload inside a 'json' key:
+                # {'status': 200, 'json': {'requestId': 3118535, ...}}
                 if isinstance(response, dict):
-                    call_request_id = response.get("call_request_id") or response.get("id")
+                    json_body = response.get("json", {}) if isinstance(response.get("json"), dict) else {}
+                    call_request_id = (
+                        json_body.get("requestId") or
+                        json_body.get("call_request_id") or
+                        response.get("requestId") or
+                        response.get("call_request_id") or
+                        response.get("id")
+                    )
                 else:
-                    call_request_id = getattr(response, "call_request_id", None) or getattr(response, "id", None)
+                    call_request_id = (
+                        getattr(response, "requestId", None) or
+                        getattr(response, "call_request_id", None) or
+                        getattr(response, "id", None)
+                    )
 
                 if not call_request_id:
                     print(f"[OmniDim] WARNING: call_request_id not found in response for lead #{lead_id}. Response: {response}")
