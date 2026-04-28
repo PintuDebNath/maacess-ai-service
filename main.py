@@ -69,8 +69,8 @@ def sync_leads_to_ai(client: Client) -> None:
             print(f"[Sync] Processing lead #{lead_id} — {customer_name} ({phone_number})")
 
             try:
-                response = client.calls.dispatch_call(
-                    agent_id="151580",
+                response = client.call.dispatch_call(
+                    agent_id=151580,
                     to_number=phone_number,
                     call_context={"customer_name": customer_name, "requirement": requirement}
                 )
