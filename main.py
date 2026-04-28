@@ -9,6 +9,7 @@ with OmniDim outbound calls / knowledge base updates.
 """
 
 import os
+import sys
 import time
 from dotenv import load_dotenv
 from omnidimension import Client  # OmniDim SDK client
@@ -92,6 +93,9 @@ def sync_leads_to_ai(client: Client) -> None:
 
 
 if __name__ == "__main__":
+    # Force unbuffered output so logs appear instantly in journalctl
+    sys.stdout.reconfigure(line_buffering=True)
+
     print("=" * 50)
     print("  maacess-ai-service — Starting up")
     print("=" * 50)
