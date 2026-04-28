@@ -76,10 +76,29 @@ def sync_leads_to_ai(client: Client) -> None:
                 )
                 print(f"[OmniDim] Call dispatched: {response}")
 
-                update_query = "UPDATE omni_leads SET call_status = 'dispatched', updated_at = NOW() WHERE id = %s"
-                cursor.execute(update_query, (lead_id,))
+                # ── Extract call_request_id from the OmniDim response ─────────
+                # The response may be a dict or an object — handle both.
+                if isinstance(response, dict):
+                    call_request_id = response.get("call_request_id") or response.get("id")
+                else:
+                    call_request_id = getattr(response, "call_request_id", None) or getattr(response, "id", None)
+
+                if not call_request_id:
+                    print(f"[OmniDim] WARNING: call_request_id not found in response for lead #{lead_id}. Response: {response}")
+
+                print(f"[OmniDim] call_request_id for lead #{lead_id}: {call_request_id}")
+
+                # ── Persist call_request_id + dispatched status ───────────────
+                update_query = """
+                    UPDATE omni_leads
+                    SET call_status = 'dispatched',
+                        call_request_id = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """
+                cursor.execute(update_query, (call_request_id, lead_id))
                 connection.commit()
-                print(f"[DB] Updated lead #{lead_id} status to 'dispatched'")
+                print(f"[DB] Updated lead #{lead_id} — status=dispatched, call_request_id={call_request_id}")
 
             except Exception as call_e:
                 print(f"[Sync] Error dispatching call for lead #{lead_id}: {call_e}")
