@@ -9,6 +9,7 @@ with OmniDim outbound calls / knowledge base updates.
 """
 
 import os
+import time
 from dotenv import load_dotenv
 from omnidimension import Client  # OmniDim SDK client
 from database import get_connection, close_connection
@@ -41,61 +42,49 @@ def init_omnidim_client() -> Client:
 
 def sync_leads_to_ai(client: Client) -> None:
     """
-    Placeholder: Query the 'leads' table from the Laravel MySQL database
-    and use the OmniDim SDK to trigger an outbound call or update the
-    knowledge base for each lead.
+    Query the 'omni_leads' table from the Laravel MySQL database
+    and use the OmniDim SDK to trigger an outbound call for each new lead.
 
     Args:
         client (Client): An authenticated OmniDim client instance.
-
-    TODO:
-        - Query leads that have not yet been contacted (e.g. status='new').
-        - For each lead, call client.calls.create(...) to trigger an outbound call,
-          OR call client.knowledge_base.update(...) to update the KB.
-        - Mark each lead as processed in the DB after a successful API call.
     """
     connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor(dictionary=True)
 
-        # ── Placeholder query ──────────────────────────────────────────────
-        # Replace with your actual lead-fetching logic, e.g.:
-        # cursor.execute("SELECT * FROM leads WHERE status = 'new' LIMIT 50")
-        cursor.execute("SELECT * FROM leads LIMIT 10")
+        cursor.execute("SELECT * FROM omni_leads WHERE call_status IS NULL")
         leads = cursor.fetchall()
-        # ──────────────────────────────────────────────────────────────────
 
-        print(f"[Sync] Fetched {len(leads)} lead(s) from the database.")
+        if leads:
+            print(f"[Sync] Fetched {len(leads)} new lead(s) from the database.")
 
         for lead in leads:
             lead_id = lead.get("id")
-            lead_name = lead.get("name", "Unknown")
-            lead_phone = lead.get("phone", "")
+            customer_name = lead.get("customer_name", "Unknown")
+            phone_number = lead.get("phone_number", "")
+            requirement = lead.get("requirement", "")
 
-            print(f"[Sync] Processing lead #{lead_id} — {lead_name} ({lead_phone})")
+            print(f"[Sync] Processing lead #{lead_id} — {customer_name} ({phone_number})")
 
-            # ── Placeholder OmniDim action ─────────────────────────────────
-            # Example: trigger an outbound call via OmniDim SDK
-            # response = client.calls.create(
-            #     to=lead_phone,
-            #     agent_id="your_agent_id",
-            #     metadata={"lead_id": lead_id, "name": lead_name},
-            # )
-            # print(f"[OmniDim] Call triggered: {response}")
-            #
-            # Example: update knowledge base
-            # client.knowledge_base.update(
-            #     kb_id="your_kb_id",
-            #     content=f"Lead: {lead_name}, Phone: {lead_phone}",
-            # )
-            # ──────────────────────────────────────────────────────────────
+            try:
+                response = client.calls.dispatch_call(
+                    agent_id="151580",
+                    to_number=phone_number,
+                    call_context={"customer_name": customer_name, "requirement": requirement}
+                )
+                print(f"[OmniDim] Call dispatched: {response}")
 
-        print("[Sync] sync_leads_to_ai() placeholder complete — implement above TODOs.")
+                update_query = "UPDATE omni_leads SET call_status = 'dispatched', updated_at = NOW() WHERE id = %s"
+                cursor.execute(update_query, (lead_id,))
+                connection.commit()
+                print(f"[DB] Updated lead #{lead_id} status to 'dispatched'")
+
+            except Exception as call_e:
+                print(f"[Sync] Error dispatching call for lead #{lead_id}: {call_e}")
 
     except Exception as e:
         print(f"[Sync] Error during lead sync: {e}")
-        raise
 
     finally:
         if connection:
@@ -108,9 +97,19 @@ if __name__ == "__main__":
     print("=" * 50)
 
     # 1. Initialize OmniDim client
-    omni_client = init_omnidim_client()
+    try:
+        omni_client = init_omnidim_client()
+    except Exception as e:
+        print(f"[Main] Failed to initialize client: {e}")
+        exit(1)
 
-    # 2. Sync leads from the Laravel MySQL database to OmniDim
-    sync_leads_to_ai(omni_client)
-
-    print("\n[Main] Service run complete.")
+    # 2. Run in a loop every 60 seconds
+    print("[Main] Starting lead sync loop...")
+    while True:
+        try:
+            sync_leads_to_ai(omni_client)
+        except Exception as e:
+            print(f"[Main] Loop error: {e}")
+        
+        print("[Main] Sleeping for 60 seconds...")
+        time.sleep(60)
